@@ -47,6 +47,7 @@ export class CLIChannel extends BaseChannel {
     });
 
     this.ready = true;
+    this.showPrompt();
     logger.info('CLI channel started');
   }
 

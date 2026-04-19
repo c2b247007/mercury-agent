@@ -196,8 +196,6 @@ async function runAgent(): Promise<void> {
   console.log(chalk.dim('  Ctrl+C to exit.'));
   console.log('');
 
-  cliChannel?.showPrompt();
-
   const shutdown = async () => {
     console.log('');
     console.log(chalk.dim(`  ${name} is shutting down...`));
