@@ -7,6 +7,7 @@ import { logger } from '../utils/logger.js';
 export class ProviderRegistry {
   private providers: Map<string, BaseProvider> = new Map();
   private defaultName: string;
+  private lastSuccessful: string | null = null;
 
   constructor(config: MercuryConfig) {
     this.defaultName = config.providers.default;
@@ -37,6 +38,11 @@ export class ProviderRegistry {
   }
 
   getDefault(): BaseProvider {
+    if (this.lastSuccessful) {
+      const provider = this.providers.get(this.lastSuccessful);
+      if (provider) return provider;
+    }
+
     const provider = this.providers.get(this.defaultName);
     if (!provider) {
       const first = this.providers.values().next().value;
@@ -44,6 +50,22 @@ export class ProviderRegistry {
       return first;
     }
     return provider;
+  }
+
+  getFallbackIterator(): IterableIterator<BaseProvider> {
+    const ordered: BaseProvider[] = [];
+    const defaultProvider = this.getDefault();
+    ordered.push(defaultProvider);
+    for (const [, provider] of this.providers) {
+      if (provider !== defaultProvider) {
+        ordered.push(provider);
+      }
+    }
+    return ordered[Symbol.iterator]();
+  }
+
+  markSuccess(name: string): void {
+    this.lastSuccessful = name;
   }
 
   listAvailable(): string[] {

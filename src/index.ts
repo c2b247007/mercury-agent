@@ -153,7 +153,7 @@ async function runAgent(): Promise<void> {
   const episodic = new EpisodicMemory(config);
 
   const channels = new ChannelRegistry(config);
-  const capabilities = new CapabilityRegistry(skillLoader, scheduler);
+  const capabilities = new CapabilityRegistry(skillLoader, scheduler, tokenBudget);
 
   const agent = new Agent(
     config, providers, identity, shortTerm, longTerm, episodic, channels, tokenBudget, capabilities, scheduler,

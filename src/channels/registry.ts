@@ -52,6 +52,14 @@ export class ChannelRegistry {
       .map(([type]) => type);
   }
 
+  getNotificationChannel(): Channel | undefined {
+    const telegram = this.channels.get('telegram');
+    if (telegram?.isReady()) return telegram;
+    const cli = this.channels.get('cli');
+    if (cli?.isReady()) return cli;
+    return this.channels.values().next().value;
+  }
+
   private incomingHandler?: (msg: ChannelMessage) => void;
 
   onIncomingMessage(handler: (msg: ChannelMessage) => void): void {

@@ -109,7 +109,18 @@ export class Agent {
     }
 
     try {
-      const provider = this.providers.getDefault();
+      if (this.tokenBudget.isOverBudget()) {
+        const channel = this.channels.getChannelForMessage(msg);
+        if (channel && msg.channelType !== 'internal') {
+          await channel.send(
+            `I've exceeded my daily token budget (${this.tokenBudget.getStatusText()}). I'll be able to respond again after the budget resets tomorrow.`,
+            msg.channelId,
+          );
+        }
+        this.lifecycle.transition('idle');
+        return;
+      }
+
       const systemPrompt = this.buildSystemPrompt();
       const recentMemory = this.shortTerm.getRecent(msg.channelId, 10);
       const relevantFacts = this.longTerm.search(msg.content, 3);
@@ -142,30 +153,59 @@ export class Agent {
         await channel.typing(msg.channelId).catch(() => {});
       }
 
-      logger.info({ provider: provider.name, model: provider.getModel(), steps: MAX_STEPS }, 'Generating agentic response');
+      const fallbackIterator = this.providers.getFallbackIterator();
+      let result: any = null;
+      let usedProvider: { name: string; model: string } | null = null;
+      let lastError: any = null;
 
-      const result = await generateText({
-        model: provider.getModelInstance(),
-        system: systemPrompt,
-        messages,
-        tools: this.capabilities.getTools(),
-        maxSteps: MAX_STEPS,
-        onStepFinish: async ({ toolCalls, text }) => {
-          if (toolCalls && toolCalls.length > 0) {
-            const names = toolCalls.map((tc: any) => tc.toolName).join(', ');
-            logger.info({ tools: names }, 'Tool call step');
-            if (channel && msg.channelType !== 'internal') {
-              await channel.send(`  [Using: ${names}]`, msg.channelId).catch(() => {});
-            }
+      for (const provider of fallbackIterator) {
+        try {
+          logger.info({ provider: provider.name, model: provider.getModel(), steps: MAX_STEPS }, 'Generating agentic response');
+
+          result = await generateText({
+            model: provider.getModelInstance(),
+            system: systemPrompt,
+            messages,
+            tools: this.capabilities.getTools(),
+            maxSteps: MAX_STEPS,
+            onStepFinish: async ({ toolCalls, text }) => {
+              if (toolCalls && toolCalls.length > 0) {
+                const names = toolCalls.map((tc: any) => tc.toolName).join(', ');
+                logger.info({ tools: names }, 'Tool call step');
+                if (channel && msg.channelType !== 'internal') {
+                  await channel.send(`  [Using: ${names}]`, msg.channelId).catch(() => {});
+                }
+              }
+            },
+          });
+
+          usedProvider = { name: provider.name, model: provider.getModel() };
+          this.providers.markSuccess(provider.name);
+          break;
+        } catch (err: any) {
+          lastError = err;
+          logger.warn({ provider: provider.name, err: err.message }, 'Provider failed, trying fallback');
+          if (channel && msg.channelType !== 'internal') {
+            await channel.send(`  [Provider ${provider.name} failed, trying fallback...]`, msg.channelId).catch(() => {});
           }
-        },
-      });
+        }
+      }
+
+      if (!result) {
+        const errMsg = `All LLM providers failed. Last error: ${lastError?.message || 'unknown'}`;
+        logger.error({ err: lastError }, errMsg);
+        if (channel && msg.channelType !== 'internal') {
+          await channel.send(errMsg, msg.channelId);
+        }
+        this.lifecycle.transition('idle');
+        return;
+      }
 
       const finalText = result.text;
 
       this.tokenBudget.recordUsage({
-        provider: provider.name,
-        model: provider.getModel(),
+        provider: usedProvider!.name,
+        model: usedProvider!.model,
         inputTokens: result.usage?.promptTokens ?? 0,
         outputTokens: result.usage?.completionTokens ?? 0,
         totalTokens: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
@@ -193,6 +233,12 @@ export class Agent {
         channelType: msg.channelType,
       });
 
+      if (msg.channelType !== 'internal') {
+        this.extractFacts(msg.content, finalText).catch(err => {
+          logger.warn({ err }, 'Fact extraction failed');
+        });
+      }
+
       if (channel && msg.channelType !== 'internal') {
         logger.info({ channelType: msg.channelType, targetId: msg.channelId }, 'Sending response');
         const elapsed = Date.now() - startTime;
@@ -218,6 +264,11 @@ export class Agent {
     const skillContext = this.capabilities.getSkillContext();
     if (skillContext) {
       prompt += '\n\n' + skillContext;
+    }
+    const budgetStatus = this.tokenBudget.getStatusText();
+    prompt += '\n\n' + budgetStatus;
+    if (this.tokenBudget.getUsagePercentage() > 70) {
+      prompt += '\nBe concise to conserve tokens.';
     }
     return prompt;
   }
@@ -257,6 +308,90 @@ export class Agent {
     const pruned = this.episodic.prune(7);
     if (pruned > 0) {
       logger.info({ pruned }, 'Episodic memory pruned');
+    }
+
+    const notifications: string[] = [];
+
+    const usagePct = this.tokenBudget.getUsagePercentage();
+    if (usagePct >= 80) {
+      notifications.push(`Token budget at ${Math.round(usagePct)}% — ${this.tokenBudget.getRemaining().toLocaleString()} tokens remaining today.`);
+    }
+
+    const pendingSchedules = this.scheduler.getManifests();
+    const now = Date.now();
+    for (const task of pendingSchedules) {
+      if (task.delaySeconds && task.executeAt) {
+        const executeAt = new Date(task.executeAt).getTime();
+        const diffMin = Math.round((executeAt - now) / 60000);
+        if (diffMin > 0 && diffMin <= 5) {
+          notifications.push(`Task "${task.description}" fires in ${diffMin} minute${diffMin !== 1 ? 's' : ''}.`);
+        }
+      }
+    }
+
+    if (notifications.length > 0) {
+      const channel = this.channels.getNotificationChannel();
+      if (channel) {
+        const msg = notifications.join('\n');
+        try {
+          await channel.send(msg, 'notification');
+        } catch (err) {
+          logger.warn({ err }, 'Failed to send heartbeat notification');
+        }
+      }
+    }
+  }
+
+  private async extractFacts(userMessage: string, agentResponse: string): Promise<void> {
+    const trivial = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|bye|goodbye|good morning|good evening)\b/i;
+    if (trivial.test(userMessage.trim())) return;
+
+    if (!this.tokenBudget.canAfford(500)) return;
+
+    try {
+      const provider = this.providers.getDefault();
+      const result = await generateText({
+        model: provider.getModelInstance(),
+        system: 'You are a fact extractor. Read the conversation below and extract 1-3 important facts worth remembering long-term. Output each fact on a separate line, prefixed with "- ". Only extract facts that are specific, factual, and not obvious. If nothing is worth remembering, output nothing.',
+        messages: [
+          { role: 'user', content: `User: ${userMessage}\nAssistant: ${agentResponse}` },
+        ],
+        maxTokens: 200,
+      });
+
+      const text = result.text.trim();
+      if (!text) return;
+
+      const facts = text
+        .split('\n')
+        .map(l => l.replace(/^-\s*/, '').trim())
+        .filter(f => f.length > 10 && f.length < 200);
+
+      const existing = this.longTerm.getAll();
+      for (const fact of facts.slice(0, 3)) {
+        const isDupe = existing.some(e =>
+          e.fact.toLowerCase().includes(fact.toLowerCase().slice(0, 30))
+        );
+        if (!isDupe) {
+          this.longTerm.add({
+            topic: 'extracted',
+            fact,
+            source: 'conversation',
+          });
+          logger.info({ fact: fact.slice(0, 60) }, 'Fact extracted to long-term memory');
+        }
+      }
+
+      this.tokenBudget.recordUsage({
+        provider: provider.name,
+        model: provider.getModel(),
+        inputTokens: result.usage?.promptTokens ?? 0,
+        outputTokens: result.usage?.completionTokens ?? 0,
+        totalTokens: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+        channelType: 'internal',
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Fact extraction error');
     }
   }
 

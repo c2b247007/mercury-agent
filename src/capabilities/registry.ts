@@ -5,6 +5,7 @@ import { createWriteFileTool } from './filesystem/write-file.js';
 import { createCreateFileTool } from './filesystem/create-file.js';
 import { createListDirTool } from './filesystem/list-dir.js';
 import { createDeleteFileTool } from './filesystem/delete-file.js';
+import { createEditFileTool } from './filesystem/edit-file.js';
 import { createRunCommandTool } from './shell/run-command.js';
 import { createApproveCommandTool } from './shell/approve-command.js';
 import { createInstallSkillTool } from './skills/install-skill.js';
@@ -13,8 +14,17 @@ import { createUseSkillTool } from './skills/use-skill.js';
 import { createScheduleTaskTool } from './scheduler/schedule-task.js';
 import { createListTasksTool } from './scheduler/list-tasks.js';
 import { createCancelTaskTool } from './scheduler/cancel-task.js';
+import { createBudgetStatusTool } from './system/budget-status.js';
+import { createGitStatusTool } from './git/git-status.js';
+import { createGitDiffTool } from './git/git-diff.js';
+import { createGitLogTool } from './git/git-log.js';
+import { createGitAddTool } from './git/git-add.js';
+import { createGitCommitTool } from './git/git-commit.js';
+import { createGitPushTool } from './git/git-push.js';
+import { createFetchUrlTool } from './web/fetch-url.js';
 import type { SkillLoader } from '../skills/loader.js';
 import type { Scheduler } from '../core/scheduler.js';
+import type { TokenBudget } from '../utils/tokens.js';
 import { logger } from '../utils/logger.js';
 
 export class CapabilityRegistry {
@@ -22,11 +32,13 @@ export class CapabilityRegistry {
   private tools: Record<string, Tool> = {};
   private skillLoader?: SkillLoader;
   private scheduler?: Scheduler;
+  private tokenBudget?: TokenBudget;
 
-  constructor(skillLoader?: SkillLoader, scheduler?: Scheduler) {
+  constructor(skillLoader?: SkillLoader, scheduler?: Scheduler, tokenBudget?: TokenBudget) {
     this.permissions = new PermissionManager();
     this.skillLoader = skillLoader;
     this.scheduler = scheduler;
+    this.tokenBudget = tokenBudget;
     this.registerAll();
   }
 
@@ -39,6 +51,7 @@ export class CapabilityRegistry {
       this.tools.create_file = createCreateFileTool(this.permissions);
       this.tools.list_dir = createListDirTool(this.permissions);
       this.tools.delete_file = createDeleteFileTool(this.permissions);
+      this.tools.edit_file = createEditFileTool(this.permissions);
       logger.info('Filesystem tools registered');
     }
 
@@ -61,6 +74,24 @@ export class CapabilityRegistry {
       this.tools.cancel_scheduled_task = createCancelTaskTool(this.scheduler);
       logger.info('Scheduler tools registered');
     }
+
+    if (this.tokenBudget) {
+      this.tools.budget_status = createBudgetStatusTool(this.tokenBudget);
+      logger.info('Budget tool registered');
+    }
+
+    if (manifest.capabilities.git?.enabled) {
+      this.tools.git_status = createGitStatusTool();
+      this.tools.git_diff = createGitDiffTool();
+      this.tools.git_log = createGitLogTool();
+      this.tools.git_add = createGitAddTool();
+      this.tools.git_commit = createGitCommitTool();
+      this.tools.git_push = createGitPushTool(this.permissions);
+      logger.info('Git tools registered');
+    }
+
+    this.tools.fetch_url = createFetchUrlTool();
+    logger.info('Web fetch tool registered');
   }
 
   getTools(): Record<string, Tool> {
