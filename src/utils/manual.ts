@@ -58,6 +58,7 @@ export function getManual(): string {
     ['mercury doctor', 'Reconfigure settings (Enter keeps current)'],
     ['mercury setup', 'Re-run the setup wizard'],
     ['mercury status', 'Show config and daemon status'],
+    ['mercury telegram unpair', 'Clear the paired Telegram owner'],
     ['mercury help', 'Show this manual'],
     ['mercury service install', 'Install as system service (auto-start)'],
     ['mercury service uninstall', 'Uninstall system service'],
@@ -75,6 +76,8 @@ export function getManual(): string {
   sections.push('');
 
   const chat = [
+    ['/start', 'Pair this Telegram account to Mercury'],
+    ['/pair', 'Pair this Telegram account to Mercury'],
     ['/help', 'Show this manual'],
     ['/status', 'Show config and budget info'],
     ['/tools', 'List currently loaded tools'],
@@ -82,6 +85,7 @@ export function getManual(): string {
     ['/stream', 'Toggle text streaming on/off (Telegram)'],
     ['/stream on', 'Enable streaming (live text updates)'],
     ['/stream off', 'Disable streaming (single message)'],
+    ['/unpair', 'Remove Telegram pairing for this Mercury instance'],
   ];
 
   for (const [cmd, desc] of chat) {
