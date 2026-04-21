@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getMercuryHome } from '../utils/config.js';
@@ -325,7 +325,7 @@ export class PermissionManager {
     const scopes = this.manifest.capabilities.filesystem.scopes;
     for (const scope of scopes) {
       const scopeResolved = resolve(scope.path.replace(/^~/, homedir()));
-      if (resolvedPath === scopeResolved || resolvedPath.startsWith(scopeResolved + '/')) {
+      if (resolvedPath === scopeResolved || resolvedPath.startsWith(scopeResolved + sep)) {
         return scope;
       }
     }
@@ -367,6 +367,8 @@ export class PermissionManager {
       /(?:^|\s)(\/[^\s]+)/,
       /(?:^|\s)(~\/[^\s]+)/,
       /(?:^|\s)\.\.\/([^\s]+)/,
+      /(?:^|\s)([A-Za-z]:\\[^\s]+)/,
+      /(?:^|\s)(\\\\[^\s]+)/,
     ];
     for (const p of pathPatterns) {
       const match = command.match(p);
