@@ -299,7 +299,6 @@ export class Agent {
           messages.push({ role: 'assistant', content: 'Noted. I\'ll use these facts.' });
         }
       }
-      }
 
       if (recentMemory.length > 0) {
         for (const m of recentMemory) {
