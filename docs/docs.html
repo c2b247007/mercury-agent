@@ -301,6 +301,7 @@
       <nav>
         <div class="sidebar-heading">Getting Started</div>
         <a href="#installation">Installation</a>
+        <a href="#upgrade">Upgrade</a>
         <a href="#setup">First-Time Setup</a>
         <a href="#starting">Starting Mercury</a>
         <div class="sidebar-heading">CLI Commands</div>
@@ -334,6 +335,24 @@
       <p>Or run without installing:</p>
       <div class="terminal-inline">
         <code>npx @cosmicstack/mercury-agent</code>
+      </div>
+
+      <h2 id="upgrade">Upgrade</h2>
+      <p>Mercury includes a built-in upgrade command that handles the full update cycle:</p>
+      <div class="terminal-inline">
+        <code>mercury upgrade</code>
+      </div>
+      <p>This command:</p>
+      <ul>
+        <li><strong>Checks npm</strong> for the latest published version</li>
+        <li><strong>Stops the daemon</strong> if running, to avoid conflicts</li>
+        <li><strong>Removes the old package</strong> first to prevent <code>ENOTEMPTY</code> errors</li>
+        <li><strong>Installs</strong> the latest version globally</li>
+        <li><strong>Shows</strong> the before/after version comparison</li>
+      </ul>
+      <div class="callout">
+        <div class="callout-title">ENOTEMPTY fix</div>
+        <p>If you see <code>ENOTEMPTY: directory not empty, rename</code> when running <code>npm i -g</code> manually, use <code>mercury upgrade</code> instead — it removes the old package directory before installing the new one.</p>
       </div>
 
       <h2 id="setup">First-Time Setup</h2>
