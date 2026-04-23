@@ -28,7 +28,7 @@ console.log('\n2/5 Packing tarball...');
 if (existsSync(TMP)) rmSync(TMP, { recursive: true, force: true });
 mkdirSync(TMP, { recursive: true });
 
-const tarball = execSync('npm pack 2>/dev/null', { cwd: ROOT, encoding: 'utf-8' }).trim().split('\n').pop();
+const tarball = execSync('npm pack', { cwd: ROOT, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim().split('\n').pop();
 const tarballPath = join(ROOT, tarball);
 console.log(`  Tarball: ${tarball}`);
 
