@@ -15,8 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build",
-    "preinstall": "node scripts/check-native-deps.js"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "ai",
